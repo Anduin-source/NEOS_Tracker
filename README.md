@@ -1,1 +1,1 @@
-# objetivo desse programa é buscar no NEOCP os neos candidates recem descobertos, e depois usando o Find_Orb, definir suas efemerides para captura
+# objetivo desse programa é mostrar os objetos do NEOCP, NEOFIXER e gerar efemerides para facilitar o trabalho de follow up
