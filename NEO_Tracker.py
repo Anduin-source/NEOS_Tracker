@@ -160,116 +160,61 @@ class FindOrbApp:
         """
         try:
             site_code = self.obs_code_entry.get() or 'X93'
-            base_url = 'https://neofixerapi.arizona.edu/targets/?site=' + site_code + '&num=40'
+            base_url = f'https://neofixerapi.arizona.edu/targets/?site={site_code}&num=40'
             response = requests.get(base_url)
             response.raise_for_status()
             data = response.json()
-            
-            # Extract targets
-            targets = data.get('result', {}).get('objects', {})
-            if not targets:
-                messagebox.showinfo("NEOFIXER", "No targets found.")
-                return
-
-            # Create a new window to display the targets
-            neofixer_window = tk.Toplevel(self.root)
-            neofixer_window.title("NEOFIXER Targets")
-            neofixer_window.geometry("800x400")
-
-            # Create a Treeview to display the targets
-            tree = ttk.Treeview(neofixer_window)
-            tree.pack(expand=True, fill='both', padx=10, pady=10)
-
-            # Define columns
-            columns = ('ID', 'Priority', 'Score', 'Cost', 'Magnitude', '1-sigma Uncertainty')
-            tree["columns"] = columns
-            tree["show"] = "headings"
-
-            # Configure headers with sorting capability
-            for col in columns:
-                tree.heading(col, text=col, command=lambda _col=col: self.sort_by(tree, _col, False))
-                tree.column(col, anchor='center', width=120)
-
-            # Insert target data
-            for sID, dObj in targets.items():
-                priority = dObj.get('priority', '-')
-                score = dObj.get('score', -1)
-                cost = dObj.get('cost', -1)
-                magnitude = dObj.get('vmag', -1)
-                uncertainty = dObj.get('uncert', -1)
-
-                tree.insert("", "end", values=(
-                    sID,
-                    priority,
-                    f"{score:.2f}",
-                    f"{cost:.1f}",
-                    f"{magnitude:.1f}",
-                    f"{uncertainty:.4f}"
-                ))
-
-            # Add a vertical scrollbar
-            scrollbar = ttk.Scrollbar(neofixer_window, orient="vertical", command=tree.yview)
-            tree.configure(yscroll=scrollbar.set)
-            scrollbar.pack(side='right', fill='y')
-
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching NEOFIXER targets: {e}")
             messagebox.showerror("Error", f"Unable to fetch NEOFIXER targets: {e}")
-            base_url = 'https://neofixerapi.arizona.edu/targets/?site=' + site_code + '&num=40'
-            response = requests.get(base_url)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Extract targets
-            targets = data.get('result', {}).get('objects', {})
-            if not targets:
-                messagebox.showinfo("NEOFIXER", "No targets found.")
-                return
+            return
 
-            # Create a new window to display the targets
-            neofixer_window = tk.Toplevel(self.root)
-            neofixer_window.title("NEOFIXER Targets")
-            neofixer_window.geometry("800x400")
+        # Extract targets
+        targets = data.get('result', {}).get('objects', {})
+        if not targets:
+            messagebox.showinfo("NEOFIXER", "No targets found.")
+            return
 
-            # Create a Treeview to display the targets
-            tree = ttk.Treeview(neofixer_window)
-            tree.pack(expand=True, fill='both', padx=10, pady=10)
+        # Create a new window to display the targets
+        neofixer_window = tk.Toplevel(self.root)
+        neofixer_window.title("NEOFIXER Targets")
+        neofixer_window.geometry("800x400")
 
-            # Define columns
-            columns = ('ID', 'Priority', 'Score', 'Cost', 'Magnitude', '1-sigma Uncertainty')
-            tree["columns"] = columns
-            tree["show"] = "headings"
+        # Create a Treeview to display the targets
+        tree = ttk.Treeview(neofixer_window)
+        tree.pack(expand=True, fill='both', padx=10, pady=10)
 
-            # Configure headers
-            for col in columns:
-                tree.heading(col, text=col)
-                tree.column(col, anchor='center', width=120)
+        # Define columns
+        columns = ('ID', 'Priority', 'Score', 'Cost', 'Magnitude', '1-sigma Uncertainty')
+        tree["columns"] = columns
+        tree["show"] = "headings"
 
-            # Insert target data
-            for sID, dObj in targets.items():
-                priority = dObj.get('priority', '-')
-                score = dObj.get('score', -1)
-                cost = dObj.get('cost', -1)
-                magnitude = dObj.get('vmag', -1)
-                uncertainty = dObj.get('uncert', -1)
+        # Configure headers with sorting capability
+        for col in columns:
+            tree.heading(col, text=col, command=lambda _col=col: self.sort_by(tree, _col, False))
+            tree.column(col, anchor='center', width=120)
 
-                tree.insert("", "end", values=(
-                    sID,
-                    priority,
-                    f"{score:.2f}",
-                    f"{cost:.1f}",
-                    f"{magnitude:.1f}",
-                    f"{uncertainty:.4f}"
-                ))
+        # Insert target data
+        for sID, dObj in targets.items():
+            priority = dObj.get('priority', '-')
+            score = dObj.get('score', -1)
+            cost = dObj.get('cost', -1)
+            magnitude = dObj.get('vmag', -1)
+            uncertainty = dObj.get('uncert', -1)
 
-            # Add a vertical scrollbar
-            scrollbar = ttk.Scrollbar(neofixer_window, orient="vertical", command=tree.yview)
-            tree.configure(yscroll=scrollbar.set)
-            scrollbar.pack(side='right', fill='y')
+            tree.insert("", "end", values=(
+                sID,
+                priority,
+                f"{score:.2f}",
+                f"{cost:.1f}",
+                f"{magnitude:.1f}",
+                f"{uncertainty:.4f}"
+            ))
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching NEOFIXER targets: {e}")
-            messagebox.showerror("Error", f"Unable to fetch NEOFIXER targets: {e}")
+        # Add a vertical scrollbar
+        scrollbar = ttk.Scrollbar(neofixer_window, orient="vertical", command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
     """
     Main application class that manages the GUI and user interactions.
     """
