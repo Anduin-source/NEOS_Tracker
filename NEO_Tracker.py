@@ -33,6 +33,7 @@ console_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
+
 # Definition of the Tooltip class to add tooltips to widgets
 class Tooltip:
     """
@@ -62,6 +63,7 @@ class Tooltip:
         if tw:
             tw.destroy()
         self.tooltip_window = None
+
 
 def get_observations(object_type_value, target_object):
     """
@@ -95,6 +97,7 @@ def get_observations(object_type_value, target_object):
     except (KeyError, IndexError):
         logger.error("Error processing response data. Check if the object name is correct.")
         raise KeyError("Error processing response data. Check if the object name is correct.")
+
 
 def run_find_orb(obs_file, obs_code, find_orb_path, eph_steps):
     """
@@ -141,6 +144,7 @@ def run_find_orb(obs_file, obs_code, find_orb_path, eph_steps):
         logger.error(f"Error executing find_orb: {e}")
         raise Exception(f"Error executing find_orb: {e}")
 
+
 def delete_temporary_files(files):
     """
     Deletes temporary files to avoid accumulation in the directory.
@@ -152,68 +156,8 @@ def delete_temporary_files(files):
         except Exception as e:
             logger.error(f"Could not delete file {file}: {e}")
 
+
 class FindOrbApp:
-    def run_neofixer(self):
-        """
-        Runs the NEOFIXER module to retrieve targets and display them.
-        """
-        try:
-            site_code = self.obs_code_entry.get() or 'X93'
-            base_url = f'https://neofixerapi.arizona.edu/targets/?site={site_code}&num=40'
-            response = requests.get(base_url)
-            response.raise_for_status()
-            data = response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching NEOFIXER targets: {e}")
-            messagebox.showerror("Error", f"Unable to fetch NEOFIXER targets: {e}")
-            return
-
-        # Extract targets
-        targets = data.get('result', {}).get('objects', {})
-        if not targets:
-            messagebox.showinfo("NEOFIXER", "No targets found.")
-            return
-
-        # Create a new window to display the targets
-        neofixer_window = tk.Toplevel(self.root)
-        neofixer_window.title("NEOFIXER Targets")
-        neofixer_window.geometry("800x400")
-
-        # Create a Treeview to display the targets
-        tree = ttk.Treeview(neofixer_window)
-        tree.pack(expand=True, fill='both', padx=10, pady=10)
-
-        # Define columns
-        columns = ('ID', 'Priority', 'Score', 'Cost', 'Magnitude', '1-sigma Uncertainty')
-        tree["columns"] = columns
-        tree["show"] = "headings"
-
-        # Configure headers with sorting capability
-        for col in columns:
-            tree.heading(col, text=col, command=lambda _col=col: self.sort_by(tree, _col, False))
-            tree.column(col, anchor='center', width=120)
-
-        # Insert target data
-        for sID, dObj in targets.items():
-            priority = dObj.get('priority', '-')
-            score = dObj.get('score', -1)
-            cost = dObj.get('cost', -1)
-            magnitude = dObj.get('vmag', -1)
-            uncertainty = dObj.get('uncert', -1)
-
-            tree.insert("", "end", values=(
-                sID,
-                priority,
-                f"{score:.2f}",
-                f"{cost:.1f}",
-                f"{magnitude:.1f}",
-                f"{uncertainty:.4f}"
-            ))
-
-        # Add a vertical scrollbar
-        scrollbar = ttk.Scrollbar(neofixer_window, orient="vertical", command=tree.yview)
-        tree.configure(yscroll=scrollbar.set)
-        scrollbar.pack(side='right', fill='y')
     """
     Main application class that manages the GUI and user interactions.
     """
@@ -466,7 +410,7 @@ class FindOrbApp:
 
             # Display results
             self.root.after(0, self.show_text, elements_content, eph_content, obs_content)
-                        
+
             # Delete temporary files
             self.delete_temp_files([
                 obs_file_path,
@@ -557,7 +501,7 @@ class FindOrbApp:
         """
         Displays the 'About' window with application information.
         """
-        messagebox.showinfo("About", "Ephemeris Calculator Application.\nDeveloped by Your Company.")
+        messagebox.showinfo("About", "Ephemeris Calculator Application.\nDeveloped by Andre.")
 
     def show_help(self):
         """
@@ -578,6 +522,7 @@ class FindOrbApp:
             "   - This determines how many data points will be calculated.\n"
             "5. Click 'Submit' to process.\n"
             "6. The results, including orbital elements, ephemerides, and observations, will be displayed in the text area.\n\n"
+            "Tip: In the NEOCP window, double-click any object to automatically fill in its name and type.\n\n"
             "Configuration:\n"
             "To configure the path to the 'find_orb' executable, follow these steps:\n"
             "1. Locate or create the `config.ini` file in the same directory as this application.\n"
@@ -591,13 +536,13 @@ class FindOrbApp:
             "3. Save the `config.ini` file.\n"
             "4. Alternatively, you can specify the `find_orb_path` via command-line arguments when running the application:\n"
             "   ```bash\n"
-            "   python ephemeris_calculator.py --find_orb_path \"C:\\Path\\To\\Your\\find_orb\"\n"
+            "   python NEO_Tracker.py --find_orb_path \"C:\\Path\\To\\Your\\find_orb\"\n"
             "   ```\n\n"
             "Notes:\n"
             "- Ensure that 'find_orb' is properly installed and the path is correctly set in the configuration file or via command-line arguments.\n"
             "- For any errors or issues, check the 'app.log' file for details.\n\n"
             "Support:\n"
-            "For assistance, please contact support@yourcompany.com"
+            "For assistance, please contact: https://github.com/Anduin-source/NEOS_Tracker/issues"
         )
         help_window = tk.Toplevel(self.root)
         help_window.title("User Manual")
@@ -611,7 +556,6 @@ class FindOrbApp:
         """
         Initiates the process to fetch and display NEO Candidates.
         """
-        # Start fetching in a new thread to keep GUI responsive
         thread = threading.Thread(target=self.fetch_and_display_neocp)
         thread.start()
 
@@ -626,7 +570,7 @@ class FindOrbApp:
             response.raise_for_status()
             neocp_data = response.json()
             self.root.after(0, lambda: self.status_bar.config(text="NEO Candidates fetched successfully."))
-            self.display_neocp(neocp_data)
+            self.root.after(0, lambda: self.display_neocp(neocp_data))
         except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching NEO Candidates: {e}")
             self.root.after(0, lambda: messagebox.showerror(
@@ -637,66 +581,74 @@ class FindOrbApp:
 
     def display_neocp(self, data):
         """
-        Displays the NEO Candidates data in a new window using pandas and Treeview with aesthetic adjustments.
+        Displays the NEO Candidates data in a new window using pandas and Treeview.
+        Double-clicking a row fills the main form with that object's designation and
+        sets the type to NEOCP, then closes this window.
         """
         try:
             # Convert JSON data to pandas DataFrame
             df = pd.json_normalize(data)
 
-            # Agrupar 'discovery year', 'discovery month', 'discovery day' em 'Discovery Date'
+            # Combine discovery year/month/day into a single 'Discovery Date' column
             if all(col in df.columns for col in ['Discovery_year', 'Discovery_month', 'Discovery_day']):
-                df['Discovery Date'] = df['Discovery_year'].astype(str) + '-' + df['Discovery_month'].astype(str).str.zfill(2) + '-' + df['Discovery_day'].astype(str).str.zfill(2)
+                df['Discovery Date'] = (
+                    df['Discovery_year'].astype(str) + '-' +
+                    df['Discovery_month'].astype(str).str.zfill(2) + '-' +
+                    df['Discovery_day'].astype(str).str.zfill(2)
+                )
                 df.drop(['Discovery_year', 'Discovery_month', 'Discovery_day'], axis=1, inplace=True)
             else:
                 logger.warning("Some discovery date columns are missing.")
 
-            # Formatar 'not_seen_days' para uma casa decimal
+            # Round 'not_seen_dys' to one decimal place
             if 'not_seen_dys' in df.columns:
                 df['not_seen_dys'] = df['not_seen_dys'].astype(float).round(1)
             else:
-                logger.warning("'not_seen_days' column is missing.")
+                logger.warning("'not_seen_dys' column is missing.")
 
-            # Criar uma nova janela
+            # Create a new window
             neocp_window = tk.Toplevel(self.root)
-            neocp_window.title("NEO Candidates")
+            neocp_window.title("NEO Candidates  —  double-click a row to select")
             neocp_window.geometry("1000x600")
 
-            # Criar uma Treeview para exibir a tabela
+            # Create a Treeview to display the table
             tree = ttk.Treeview(neocp_window)
             tree.pack(expand=True, fill='both', padx=10, pady=10)
 
-            # Definir as colunas
+            # Find the index of the 'Temp_Desig' column (object designation)
             columns = list(df.columns)
-            
             tree["columns"] = columns
-            tree["show"] = "headings"  # Esconder a coluna de árvore
+            tree["show"] = "headings"
 
-            # Configurar os cabeçalhos das colunas com alinhamento e adicionar funcionalidade de ordenação
+            # Configure column headers with sorting and alignment
             for col in df.columns:
                 tree.heading(col, text=col, command=lambda _col=col: self.sort_by(tree, _col, False))
-                # Definir o alinhamento
                 if col in ['Temp_Desig', 'Updated', 'Note']:
-                    tree.column(col, anchor='w', width=150)  # Alinhamento à esquerda
-                elif col == 'not_seen_days':
-                    tree.column(col, anchor='center', width=100)  # Alinhamento centralizado
-                elif col == 'Discovery Date':
-                    tree.column(col, anchor='center', width=120)  # Alinhamento centralizado
+                    tree.column(col, anchor='w', width=150)
+                elif col in ['not_seen_dys', 'Discovery Date']:
+                    tree.column(col, anchor='center', width=120)
                 else:
-                    tree.column(col, anchor='center', width=100)  # Alinhamento centralizado
+                    tree.column(col, anchor='center', width=100)
 
-            # Inserir os dados na Treeview
+            # Insert rows
+            desig_col_index = columns.index('Temp_Desig') if 'Temp_Desig' in columns else 0
             for _, row in df.iterrows():
                 values = []
                 for col in df.columns:
-                    if col == 'not_seen_days':
-                        # Garantir que 'not_seen_days' tenha uma casa decimal
+                    if col == 'not_seen_dys':
                         value = f"{row[col]:.1f}"
                     else:
                         value = row[col]
                     values.append(value)
                 tree.insert("", "end", values=values)
 
-            # Adicionar uma barra de rolagem vertical
+            # Bind double-click to select object and fill main form
+            tree.bind(
+                "<Double-1>",
+                lambda event: self.select_neocp_object(event, tree, desig_col_index, neocp_window)
+            )
+
+            # Add vertical scrollbar
             scrollbar = ttk.Scrollbar(neocp_window, orient="vertical", command=tree.yview)
             tree.configure(yscroll=scrollbar.set)
             scrollbar.pack(side='right', fill='y')
@@ -708,6 +660,98 @@ class FindOrbApp:
                 f"An error occurred while processing NEO Candidates data:\n{e}"
             )
 
+    def select_neocp_object(self, event, tree, desig_col_index, neocp_window):
+        """
+        Called when the user double-clicks a row in the NEOCP window.
+        Fills the main form with the selected object's designation,
+        sets the type to NEOCP, and closes the NEOCP window.
+        """
+        selected = tree.focus()
+        if not selected:
+            return
+
+        values = tree.item(selected, 'values')
+        if not values:
+            return
+
+        designation = values[desig_col_index]
+
+        # Fill the main form
+        self.target_object_entry.configure(foreground='black', background='white')
+        self.target_object_entry.delete(0, tk.END)
+        self.target_object_entry.insert(0, designation)
+
+        # Set type to NEOCP
+        self.object_type.set("NEOCP")
+
+        # Update status bar
+        self.status_bar.config(text=f"Selected: {designation} — press Submit to calculate ephemerides.")
+
+        # Close the NEOCP window
+        neocp_window.destroy()
+
+    def run_neofixer(self):
+        """
+        Runs the NEOFIXER module to retrieve targets and display them.
+        """
+        try:
+            site_code = self.obs_code_entry.get() or 'X93'
+            base_url = f'https://neofixerapi.arizona.edu/targets/?site={site_code}&num=40'
+            response = requests.get(base_url)
+            response.raise_for_status()
+            data = response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching NEOFIXER targets: {e}")
+            messagebox.showerror("Error", f"Unable to fetch NEOFIXER targets: {e}")
+            return
+
+        # Extract targets
+        targets = data.get('result', {}).get('objects', {})
+        if not targets:
+            messagebox.showinfo("NEOFIXER", "No targets found.")
+            return
+
+        # Create a new window to display the targets
+        neofixer_window = tk.Toplevel(self.root)
+        neofixer_window.title("NEOFIXER Targets")
+        neofixer_window.geometry("800x400")
+
+        # Create a Treeview to display the targets
+        tree = ttk.Treeview(neofixer_window)
+        tree.pack(expand=True, fill='both', padx=10, pady=10)
+
+        # Define columns
+        columns = ('ID', 'Priority', 'Score', 'Cost', 'Magnitude', '1-sigma Uncertainty')
+        tree["columns"] = columns
+        tree["show"] = "headings"
+
+        # Configure headers with sorting capability
+        for col in columns:
+            tree.heading(col, text=col, command=lambda _col=col: self.sort_by(tree, _col, False))
+            tree.column(col, anchor='center', width=120)
+
+        # Insert target data
+        for sID, dObj in targets.items():
+            priority = dObj.get('priority', '-')
+            score = dObj.get('score', -1)
+            cost = dObj.get('cost', -1)
+            magnitude = dObj.get('vmag', -1)
+            uncertainty = dObj.get('uncert', -1)
+
+            tree.insert("", "end", values=(
+                sID,
+                priority,
+                f"{score:.2f}",
+                f"{cost:.1f}",
+                f"{magnitude:.1f}",
+                f"{uncertainty:.4f}"
+            ))
+
+        # Add a vertical scrollbar
+        scrollbar = ttk.Scrollbar(neofixer_window, orient="vertical", command=tree.yview)
+        tree.configure(yscroll=scrollbar.set)
+        scrollbar.pack(side='right', fill='y')
+
     def sort_by(self, tree, col, descending):
         """
         Sort the Treeview by a given column.
@@ -715,11 +759,9 @@ class FindOrbApp:
         data = [(tree.set(child, col), child) for child in tree.get_children('')]
         data.sort(reverse=descending)
 
-        # Rearrange items in sorted positions
         for ix, item in enumerate(data):
             tree.move(item[1], '', ix)
 
-        # Reverse sort next time
         tree.heading(col, command=lambda: self.sort_by(tree, col, not descending))
 
     def quit_application(self):
@@ -728,6 +770,7 @@ class FindOrbApp:
         """
         if messagebox.askyesno("Quit", "Are you sure you want to quit?"):
             self.root.quit()
+
 
 def main():
     """
@@ -775,6 +818,7 @@ def main():
     root.deiconify()  # Show the root window
     app = FindOrbApp(root, find_orb_path=find_orb_path)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
