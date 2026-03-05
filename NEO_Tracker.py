@@ -10,7 +10,6 @@ import threading
 import argparse
 import configparser
 import sys
-import json  # Para manipulação de JSON
 import pandas as pd  # Para manipulação de dados
 
 # Configure logging to log to both file and console
