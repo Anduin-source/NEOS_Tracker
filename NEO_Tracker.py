@@ -180,6 +180,7 @@ class FindOrbApp:
 
         self.find_orb_path = find_orb_path
         self.validate_find_orb_path()
+        self._processing = False
 
         self._apply_theme()
         self.create_layout()
@@ -381,15 +382,15 @@ class FindOrbApp:
         btn_frame = ttk.Frame(form_frame, style='Panel.TFrame')
         btn_frame.grid(row=4, column=0, columnspan=2, pady=(12, 4), sticky='w')
 
-        submit_btn = ttk.Button(btn_frame, text="▶  Submit", command=self.submit)
-        submit_btn.pack(side='left', padx=(0, 8))
-        self.root.bind('<Control-s>', self.submit)
-        Tooltip(submit_btn, "Calculate ephemerides  (Ctrl+S)")
+        self.submit_button = ttk.Button(btn_frame, text="▶  Submit", command=self.submit)
+        self.submit_button.pack(side='left', padx=(0, 8))
+        self.root.bind('<Control-s>', lambda e: self.submit(), add='')
+        Tooltip(self.submit_button, "Calculate ephemerides  (Ctrl+S)")
 
         reset_btn = ttk.Button(btn_frame, text="⟳  Reset",
                                style='Secondary.TButton', command=self.refresh)
         reset_btn.pack(side='left')
-        self.root.bind('<Control-n>', self.refresh)
+        self.root.bind('<Control-n>', lambda e: self.refresh(), add='')
         Tooltip(reset_btn, "Clear all fields  (Ctrl+N)")
 
         # Progress bar
@@ -521,8 +522,11 @@ class FindOrbApp:
     # ------------------------------------------------------------------
 
     def submit(self, event=None):
+        if self._processing:
+            return
         if not self.validate_entries():
             return
+        self._processing = True
         thread = threading.Thread(target=self.process_submission, daemon=True)
         thread.start()
 
@@ -539,6 +543,7 @@ class FindOrbApp:
                 "Error", "Ephemeris Steps must be an integer."))
             return
 
+        self.root.after(0, lambda: self.submit_button.configure(state='disabled'))
         self.root.after(0, lambda: self.progress.pack(pady=4))
         self.root.after(0, self.progress.start)
         self.root.after(0, lambda: self.status_bar.config(
@@ -546,6 +551,42 @@ class FindOrbApp:
 
         try:
             obs80_string = get_observations(object_type_value, target_object)
+
+            # Filter observations to keep only lines belonging to the requested object.
+            # Known MPC API bug: the get-obs-neocp endpoint occasionally returns observations
+            # for unrelated objects mixed into the payload of a requested object (e.g. querying
+            # C45YPL1 returned 2 lines for TF26C14). This is inconsistent with the MPC website,
+            # which shows only the correct observations for each object. The filter below
+            # discards any lines whose identifier (OBS80 columns 1-12) does not match the
+            # requested object, correcting for this API misbehaviour.
+            # OBS80 format: columns 1-12 are the object identifier.
+            all_lines = obs80_string.splitlines()
+            filtered_lines = [
+                line for line in all_lines
+                if line[:12].strip() == target_object.strip()
+            ]
+            removed = len(all_lines) - len(filtered_lines)
+            if removed > 0:
+                foreign_ids = set(
+                    line[:12].strip() for line in all_lines
+                    if line[:12].strip() != target_object.strip() and line.strip()
+                )
+                logger.warning(
+                    f"OBS80 for {target_object}: filtered out {removed} lines "
+                    f"belonging to other objects: {foreign_ids}"
+                )
+            obs80_string = '\n'.join(filtered_lines)
+
+            logger.debug(f"OBS80 content for {target_object}:\n{obs80_string}")
+
+            # Remove any leftover observation files before writing new one
+            # Find_Orb processes ALL .txt files in its directory if multiple exist
+            import glob
+            for old_obs in glob.glob(os.path.join(self.find_orb_path, 'obs_*.txt')):
+                try:
+                    os.remove(old_obs)
+                except Exception:
+                    pass
 
             obs_file_path = os.path.join(self.find_orb_path,
                                          f"obs_{target_object}.txt")
@@ -593,8 +634,10 @@ class FindOrbApp:
                     f"Unexpected error: {msg}\nSee app.log for details."))
             self.root.after(0, lambda: self.status_bar.config(text="Error."))
         finally:
+            self._processing = False
             self.root.after(0, self.progress.stop)
             self.root.after(0, self.progress.pack_forget)
+            self.root.after(0, lambda: self.submit_button.configure(state='normal'))
 
     def delete_temp_files(self, files):
         for file in files:
@@ -784,6 +827,10 @@ class FindOrbApp:
         self.status_bar.config(text="NEOCP load failed.")
 
     def _select_neocp_from_panel(self, event, desig_idx):
+        # Identify clicked region — ignore header and empty areas
+        region = self.neocp_tree.identify_region(event.x, event.y)
+        if region != 'cell':
+            return
         selected = self.neocp_tree.focus()
         if not selected:
             return
