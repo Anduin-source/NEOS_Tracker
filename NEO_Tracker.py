@@ -168,6 +168,187 @@ def delete_temporary_files(files):
             logger.error(f"Could not delete file {file}: {e}")
 
 
+def parse_summary(elements_content, eph_content, target_object):
+    """
+    Parses Find_Orb elements and ephemeris output to produce a human-readable
+    summary of the key physical and observational properties of the object.
+
+    Sources:
+      - elements_content : raw text from elements.txt (Find_Orb output)
+      - eph_content      : raw text from efemerides.txt (Find_Orb output)
+      - target_object    : designation string (for display)
+
+    Returns a list of (text, tag) tuples where tag is one of:
+      'summary'         — normal green text
+      'summary_warning' — orange/red for PHA and hyperbolic flags
+    """
+
+    def _get(pattern, text, group=1, default='N/A'):
+        m = re.search(pattern, text)
+        return m.group(group).strip() if m else default
+
+    # ------------------------------------------------------------------ #
+    # 1. Parse elements_content
+    # ------------------------------------------------------------------ #
+
+    diameter  = _get(r'Diameter\s+([\d.]+)\s+meters', elements_content)
+    enc_vel   = _get(r'Earth encounter velocity\s+([\d.]+)\s+km/s', elements_content)
+    moid      = _get(r'Earth MOID[:\s]+([\d.]+)', elements_content)
+    score     = _get(r'Score:\s+([\d.]+)', elements_content)
+    obs_used  = _get(r'(\d+)\s+of\s+\d+\s+observations', elements_content)
+    obs_total = _get(r'\d+\s+of\s+(\d+)\s+observations', elements_content)
+    obs_arc   = _get(r'\d+\s+of\s+\d+\s+observations\s+[\d\w. ]+\(([\d.]+\s+hr)\)',
+                     elements_content)
+    perihelion = _get(r'Perihelion\s+(\d{4}\s+\w+\s+[\d.]+)', elements_content)
+    ecc        = _get(r'\be\s+([\d.]+)', elements_content)
+    incl       = _get(r'Incl\.\s+([\d.]+)', elements_content)
+    a_au       = _get(r'\ba\s+([\d.]+)', elements_content)
+    tisserand  = _get(r'Tisserand relative to Earth:\s+([\d.]+)', elements_content)
+    h_mag      = _get(r'\bH\s+([\d.]+)', elements_content)
+
+    # ------------------------------------------------------------------ #
+    # 2. Find closest approach in ephemeris table
+    # ------------------------------------------------------------------ #
+    closest_date  = 'N/A'
+    closest_delta = None
+    closest_mag   = 'N/A'
+    closest_alt   = 'N/A'
+
+    for line in eph_content.splitlines():
+        if not re.match(r'^\d{4}\s+\d{2}\s+\d{2}\s+\d{2}', line):
+            continue
+        parts = line.split()
+        if len(parts) < 13:
+            continue
+        try:
+            delta = float(parts[10])
+            mag   = parts[12]
+            alt   = parts[14] if len(parts) > 14 else 'N/A'
+            date_str = f"{parts[0]}-{parts[1]}-{parts[2]} {parts[3]}h UTC"
+            if closest_delta is None or delta < closest_delta:
+                closest_delta = delta
+                closest_date  = date_str
+                closest_mag   = mag
+                closest_alt   = alt
+        except (ValueError, IndexError):
+            continue
+
+    closest_delta_str = 'N/A'
+    if closest_delta is not None:
+        ld = closest_delta * 389.17
+        closest_delta_str = f"{closest_delta:.5f} AU  ({ld:.1f} LD)"
+
+    # ------------------------------------------------------------------ #
+    # 3. Classify via Tisserand
+    # ------------------------------------------------------------------ #
+    try:
+        t_val = float(tisserand)
+        if t_val < 2:
+            obj_class = "Jupiter-family comet (T < 2)"
+        elif t_val < 3:
+            obj_class = "Jupiter-family asteroid / comet candidate (2 ≤ T < 3)"
+        else:
+            obj_class = "Asteroid (T ≥ 3)"
+    except ValueError:
+        obj_class = "Unknown"
+
+    # ------------------------------------------------------------------ #
+    # 4. Flags
+    # ------------------------------------------------------------------ #
+    # PHA: MOID < 0.05 AU and H < 22
+    try:
+        pha = float(moid) < 0.05 and float(h_mag) < 22
+    except ValueError:
+        pha = False
+
+    # Hyperbolic / interstellar: e >= 1
+    try:
+        hyperbolic = float(ecc) >= 1.0
+    except ValueError:
+        hyperbolic = False
+
+    # Earth-crossing: MOID < 0.05 AU (regardless of size)
+    try:
+        earth_crossing = float(moid) < 0.05
+    except ValueError:
+        earth_crossing = False
+
+    # ------------------------------------------------------------------ #
+    # 5. Assemble list of (text, tag) tuples
+    # ------------------------------------------------------------------ #
+    S = 'summary'
+    W = 'summary_warning'
+
+    blocks = []
+
+    # Warning flags at the top — most prominent
+    if hyperbolic:
+        blocks.append(("⚠  HYPERBOLIC ORBIT (e ≥ 1) — POSSIBLE INTERSTELLAR OBJECT\n", W))
+    if pha:
+        blocks.append(("⚠  POTENTIALLY HAZARDOUS ASTEROID (PHA) — MOID < 0.05 AU  &  H < 22\n", W))
+    elif earth_crossing:
+        blocks.append(("⚠  EARTH-CROSSING ORBIT — MOID < 0.05 AU\n", W))
+
+    if blocks:
+        blocks.append(("\n", S))
+
+    blocks += [
+        (f"Object          : {target_object}\n", S),
+        (f"Classification  : {obj_class}\n", S),
+        (f"\n", S),
+        (f"── Physical ──────────────────────────────\n", S),
+        (f"Est. diameter   : {diameter} m  (10% albedo assumed)\n", S),
+        (f"Abs. magnitude  : H = {h_mag}\n", S),
+        (f"\n", S),
+        (f"── Orbit ─────────────────────────────────\n", S),
+        (f"Semi-major axis : {a_au} AU\n", S),
+        (f"Eccentricity    : {ecc}", S),
+    ]
+
+    # Inline hyperbolic flag next to eccentricity
+    if hyperbolic:
+        blocks.append(("  ← hyperbolic\n", W))
+    else:
+        blocks.append(("\n", S))
+
+    blocks += [
+        (f"Inclination     : {incl}°\n", S),
+        (f"Perihelion      : {perihelion}\n", S),
+        (f"Earth MOID      : {moid} AU", S),
+    ]
+
+    if earth_crossing:
+        blocks.append(("  ← Earth-crossing\n", W))
+    else:
+        blocks.append(("\n", S))
+
+    blocks += [
+        (f"PHA             : {'YES' if pha else 'No'}", S),
+    ]
+    if pha:
+        blocks.append(("  ⚠\n", W))
+    else:
+        blocks.append(("\n", S))
+
+    blocks += [
+        (f"Tisserand (T_E) : {tisserand}\n", S),
+        (f"\n", S),
+        (f"── Close Approach ────────────────────────\n", S),
+        (f"Closest date    : {closest_date}\n", S),
+        (f"Min. distance   : {closest_delta_str}\n", S),
+        (f"Mag. at C/A     : {closest_mag}\n", S),
+        (f"Alt. at C/A     : {closest_alt}°  (observatory)\n", S),
+        (f"Enc. velocity   : {enc_vel} km/s\n", S),
+        (f"\n", S),
+        (f"── Observations ──────────────────────────\n", S),
+        (f"Used / total    : {obs_used} / {obs_total}\n", S),
+        (f"Observed arc    : {obs_arc}\n", S),
+        (f"NEO score       : {score}\n", S),
+    ]
+
+    return blocks
+
+
 class FindOrbApp:
     """Main application — split-pane layout with integrated NEOCP panel."""
 
@@ -606,7 +787,7 @@ class FindOrbApp:
                 obs_content = f.read()
 
             self.root.after(0, self.show_text, elements_content,
-                            eph_content, obs_content)
+                            eph_content, obs_content, target_object)
             self.root.after(0, lambda: self.save_obs_code(obs_code))
 
             self.delete_temp_files([
@@ -699,7 +880,7 @@ class FindOrbApp:
     # Results
     # ------------------------------------------------------------------
 
-    def show_text(self, elements_content, eph_content, obs_content):
+    def show_text(self, elements_content, eph_content, obs_content, target_object):
         self.text_area.configure(state='normal')
         self.text_area.delete(1.0, tk.END)
         mono = ('Cascadia Code', 9) if self._font_exists('Cascadia Code') \
@@ -708,6 +889,24 @@ class FindOrbApp:
                                      font=('Segoe UI', 10, 'bold'),
                                      foreground=C['warning'])
         self.text_area.tag_configure('content', font=mono, foreground=C['fg'])
+        self.text_area.tag_configure('summary',
+                                     font=('Segoe UI', 10),
+                                     foreground=C['success'])
+        self.text_area.tag_configure('summary_warning',
+                                     font=('Segoe UI', 10, 'bold'),
+                                     foreground='#f44747')  # bright red
+
+        # Summary block
+        self.text_area.insert(tk.INSERT, "── Summary ──\n", 'header')
+        try:
+            summary_blocks = parse_summary(elements_content, eph_content, target_object)
+            for text, tag in summary_blocks:
+                self.text_area.insert(tk.INSERT, text, tag)
+        except Exception as e:
+            logger.warning(f"Could not generate summary: {e}")
+            self.text_area.insert(tk.INSERT, "(Summary unavailable)\n", 'summary')
+
+        self.text_area.insert(tk.INSERT, "\n", 'content')
         self.text_area.insert(tk.INSERT, "── Orbital Elements ──\n", 'header')
         self.text_area.insert(tk.INSERT, elements_content + "\n", 'content')
         self.text_area.insert(tk.INSERT, "── Ephemerides ──\n", 'header')
